@@ -14,7 +14,6 @@
 pthread_t thread[4];
 cv::Mat frame;
 cv::Mat result;
-pthread_barrier_t barrier;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /*-----------------------------------------------------
@@ -28,23 +27,21 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 *
 *--------------------------------------------------------*/
 void* processQuarter(void* arg){
+	//calculate row params
 	int quarter = *(int*) arg;
 	int rows = frame.rows;
 	int cols = frame.cols;
 	int q = rows / 4;
 	int start_row = quarter * q;
 	int end_row = (quarter == 3) ? rows : ((quarter + 1) * q) + 1;
-
-	//int result_start_row = (quarter > 0) ? (start_row - 2) :(start_row - 1);
 	int result_start_row = start_row;
-	//int result_end_row = (quarter == 3) ? (end_row - 2) : (end_row - 1);
 	int result_end_row = end_row - 2;
+
+	//get and process part of frame
 	cv::Mat color = frame(cv::Range(start_row, end_row), cv::Range::all());
 	cv::Mat	process = compute_gray_sobel(color);	
-	//std::cout << "COLOR " << quarter << " S" << color.rows << "," 
-	//       << start_row << ":" << end_row << std::endl;
-	std::cout << "PROCESS" << quarter << "size " << process.size() << std::endl;
-
+	//std::cout << "PROCESS" << quarter << "size " << process.size() << std::endl;
+	//lock when writing to result Mat
 	pthread_mutex_lock(&mutex);
 	try{
 		process.copyTo(result(cv::Range(result_start_row, result_end_row), cv::Range::all()));
@@ -56,9 +53,9 @@ void* processQuarter(void* arg){
 	}
 	
 	pthread_mutex_unlock(&mutex);
-	std::cout << "T" << quarter << " RESULT" << result.size() << std::endl;
-	std::cout << "Thread " << quarter << "RROWS " << result_start_row << " : " 
-			<< result_end_row << " size " << result.rows << std::endl;
+	//std::cout << "T" << quarter << " RESULT" << result.size() << std::endl;
+	//std::cout << "Thread " << quarter << "RROWS " << result_start_row << " : " 
+	//		<< result_end_row << " size " << result.rows << std::endl;
 	delete (int*) arg;
 	return nullptr;
 }
@@ -167,10 +164,10 @@ cv::Mat compute_gray_sobel(const cv::Mat& arb) {
 * return: uint8_t
 *--------------------------------------------------------*/
 int main(int argc, char** argv) {
+	//init attr
 	pthread_attr_t attr;
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
-	pthread_barrier_init(&barrier, NULL, 5);
 
 	if (argc != 2){
 		std::cerr << "Argument Error" << std::endl;
@@ -190,19 +187,18 @@ int main(int argc, char** argv) {
 		}
 		
 		result = cv::Mat::zeros(frame.rows - 2, frame.cols - 2, CV_8UC1);
-		
+		//create threads
 		for (int i = 0; i < 4; i++){
 			int* arg = new int(i);
 			pthread_create(&thread[i], NULL, processQuarter, arg);
 		}
 		std::cout << "CREATED ALL" << std::endl;
 		
-		//pthread_barrier_wait(&barrier);
-
+		//join threads
 		for (int i = 0; i < 4; i++){
 			pthread_join(thread[i], nullptr);
 		}
-
+		//display frame
 		std::cout << "DISPLAY?" << std::endl;
 		cv::namedWindow("Sobel Frame", cv::WINDOW_NORMAL);
 		cv::imshow("Sobel Frame", result);
@@ -214,7 +210,6 @@ int main(int argc, char** argv) {
 	cv::destroyAllWindows();
 
 	pthread_attr_destroy(&attr);
-	pthread_barrier_destroy(&barrier);
 	pthread_mutex_destroy(&mutex);
 	
 	return 0;
