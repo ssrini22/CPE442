@@ -1,6 +1,6 @@
 CC = g++
 OUT = lab_4.out
-CFLAGS = `pkg-config --cflags --libs opencv4` -pthread
+CFLAGS = `pkg-config --cflags --libs opencv4` -O0 -pthread
 
 DEPS = ${wildcard *.h}
 SRCS = ${wildcard *.cpp}
