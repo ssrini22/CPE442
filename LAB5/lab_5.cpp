@@ -33,15 +33,15 @@ void* processQuarter(void* arg){
 	int rows = frame.rows;
 	int cols = frame.cols;
 	int q = rows / 4;
-	int start_row = quarter * q;
-	int end_row = (quarter == 3) ? rows : ((quarter + 1) * q) + 1;
+   	int start_row = quarter * q;
+	int end_row = (quarter == 3) ? (rows) : ((quarter + 1) * q) + 1;
 	int result_start_row = start_row;
 	int result_end_row = end_row - 2;
 
 	//get and process part of frame
 	cv::Mat color = frame(cv::Range(start_row, end_row), cv::Range::all());
-	cv::Mat	process = compute_gray_sobel(color);	
-	//std::cout << "PROCESS" << quarter << "size " << process.size() << std::endl;
+    cv::Mat	process = compute_gray_sobel(color);	
+	std::cout << "PROCESS" << quarter << "size " << process.size() << std::endl;
 	//lock when writing to result Mat
 	pthread_mutex_lock(&mutex);
 	try{
@@ -102,23 +102,23 @@ cv::Mat to442_grayscale(const cv::Mat& frame) {
 *
 *--------------------------------------------------------*/
 cv::Mat neon_sobel(const cv::Mat& gray) {
-    int rows = gray.rows;
-    int cols = gray.cols;
+    int rows = gray.rows - 2;
+    int cols = gray.cols - 2;
 
+    int pad_cols = (gray.cols + 7) & ~7;
     cv::Mat pad;
-    cv::copyMakeBorder(gray, pad, 1, 1, 1, 1, cv::BORDER_REPLICATE);
-    int pad_rows = pad.rows;
-    int pad_cols = pad.cols;
-
+    cv::copyMakeBorder(gray, pad, 1, 1, 1, pad_cols - gray.cols + 1, cv::BORDER_REPLICATE);
+    
+    //std::cout << rows << ":" << cols << " P " << pad_rows << ":" << pad_cols << std::endl;	
     cv::Mat sobel(rows, cols, CV_8UC1);
 
-    for (int y = 1; y < pad_rows - 1; y++){
+    for (int y = 1; y < pad.rows - 1; y++){
         const uint8_t* row0 = pad.ptr<uint8_t>(y - 1);
         const uint8_t* row1 = pad.ptr<uint8_t>(y);
         const uint8_t* row2 = pad.ptr<uint8_t>(y + 1);
         uint8_t* row_sobel = sobel.ptr<uint8_t>(y - 1);
         
-        for (int x = 0; x <= pad_cols - 16; x+=8){
+        for (int x = 0; x <= pad_cols - 8; x+=8){
             uint8x8_t r0 = vld1_u8(row0 + x); 
             uint8x8_t r1 = vld1_u8(row1 + x);
             uint8x8_t r2 = vld1_u8(row2 + x);
@@ -156,8 +156,8 @@ cv::Mat neon_sobel(const cv::Mat& gray) {
             vst1_u8(row_sobel + x - 1, result);
         }
     }
-
-    return sobel;
+    cv::Rect crop(0, 0, cols, rows);
+    return sobel(crop);
 }
 
 
@@ -223,8 +223,9 @@ cv::Mat compute_gray_sobel(const cv::Mat& arb) {
 	}
 	cv::Mat gray, sobel;
 	gray = to442_grayscale(arb);
-	sobel = neon_sobel(gray);
-	return sobel;
+	sobel = to442_sobel(gray);
+    std::cout << "COMPSOBEL" << sobel.size() << std::endl;
+    return sobel;
 }
 
 /*-----------------------------------------------------
