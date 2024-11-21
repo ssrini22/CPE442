@@ -36,12 +36,12 @@ void* processQuarter(void* arg){
    	int start_row = quarter * q;
 	int end_row = (quarter == 3) ? (rows) : ((quarter + 1) * q) + 1;
 	int result_start_row = start_row;
-	int result_end_row = end_row - 2;
+	int result_end_row = end_row;
 
 	//get and process part of frame
 	cv::Mat color = frame(cv::Range(start_row, end_row), cv::Range::all());
     cv::Mat	process = compute_gray_sobel(color);	
-	std::cout << "PROCESS" << quarter << "size " << process.size() << std::endl;
+	//std::cout << "PROCESS" << quarter << "size " << process.size() << std::endl;
 	//lock when writing to result Mat
 	pthread_mutex_lock(&mutex);
 	try{
@@ -54,10 +54,10 @@ void* processQuarter(void* arg){
 	}
 	
 	pthread_mutex_unlock(&mutex);
-	//std::cout << "T" << quarter << " RESULT" << result.size() << std::endl;
-	//std::cout << "Thread " << quarter << "RROWS " << result_start_row << " : " 
-	//		<< result_end_row << " size " << result.rows << std::endl;
-	delete (int*) arg;
+    std::cout << "T" << quarter << " RESULT" << result.size() << std::endl;
+	std::cout << "Thread " << quarter << "RROWS " << result_start_row << " : " 
+			<< result_end_row << " size " << result.rows << std::endl;
+
 	return nullptr;
 }
 
@@ -102,23 +102,23 @@ cv::Mat to442_grayscale(const cv::Mat& frame) {
 *
 *--------------------------------------------------------*/
 cv::Mat neon_sobel(const cv::Mat& gray) {
-    int rows = gray.rows - 2;
-    int cols = gray.cols - 2;
+    int rows = gray.rows;
+    int cols = gray.cols;
 
-    int pad_cols = (gray.cols + 7) & ~7;
+    //int pad_cols = (gray.cols + 7) & ~7;
     cv::Mat pad;
-    cv::copyMakeBorder(gray, pad, 1, 1, 1, pad_cols - gray.cols + 1, cv::BORDER_REPLICATE);
+    cv::copyMakeBorder(gray, pad, 1, 1, 1, 1, cv::BORDER_REPLICATE);
     
     //std::cout << rows << ":" << cols << " P " << pad_rows << ":" << pad_cols << std::endl;	
     cv::Mat sobel(rows, cols, CV_8UC1);
 
-    for (int y = 1; y < pad.rows - 1; y++){
+    for (int y = 1; y < rows; y++){
         const uint8_t* row0 = pad.ptr<uint8_t>(y - 1);
         const uint8_t* row1 = pad.ptr<uint8_t>(y);
         const uint8_t* row2 = pad.ptr<uint8_t>(y + 1);
         uint8_t* row_sobel = sobel.ptr<uint8_t>(y - 1);
         
-        for (int x = 0; x <= pad_cols - 8; x+=8){
+        for (int x = 0; x <= cols - 8; x+=8){
             uint8x8_t r0 = vld1_u8(row0 + x); 
             uint8x8_t r1 = vld1_u8(row1 + x);
             uint8x8_t r2 = vld1_u8(row2 + x);
@@ -153,11 +153,12 @@ cv::Mat neon_sobel(const cv::Mat& gray) {
             int16x8_t mag = vaddq_s16(abs_gx, abs_gy);
 
             uint8x8_t result = vqmovn_u16(vreinterpretq_u16_s16(mag));
-            vst1_u8(row_sobel + x - 1, result);
+            vst1_u8(row_sobel + x, result);
         }
     }
-    cv::Rect crop(0, 0, cols, rows);
-    return sobel(crop);
+//    cv::Rect crop(0, 0, cols, rows);
+//    return sobel(crop);
+    return sobel;
 }
 
 
@@ -223,8 +224,8 @@ cv::Mat compute_gray_sobel(const cv::Mat& arb) {
 	}
 	cv::Mat gray, sobel;
 	gray = to442_grayscale(arb);
-	sobel = to442_sobel(gray);
-    std::cout << "COMPSOBEL" << sobel.size() << std::endl;
+	sobel = neon_sobel(gray);
+    //std::cout << "COMPSOBEL" << sobel.size() << std::endl;
     return sobel;
 }
 
@@ -262,11 +263,12 @@ int main(int argc, char** argv) {
 			break;
 		}
 		
-		result = cv::Mat::zeros(frame.rows - 2, frame.cols - 2, CV_8UC1);
+		result = cv::Mat::zeros(frame.rows, frame.cols, CV_8UC1);
 		//create threads
+        int args[4];
 		for (int i = 0; i < 4; i++){
-			int* arg = new int(i);
-			pthread_create(&thread[i], NULL, processQuarter, arg);
+		    args[i] = i;
+			pthread_create(&thread[i], NULL, processQuarter, &args[i]);
 		}
 		std::cout << "CREATED ALL" << std::endl;
 		
